@@ -4,7 +4,6 @@ import telebot
 import sqlite3
 import datetime
 import fitz  # PyMuPDF
-import re
 from openai import OpenAI
 from telebot import types
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -382,95 +381,46 @@ def show_users(message):
 
 @bot.message_handler(content_types=['document'])
 def handle_pdf(message):
-    if not message.document.mime_type == 'application/pdf':
+    if message.document.mime_type != 'application/pdf':
         bot.reply_to(message, "Пожалуйста, отправьте PDF-файл.")
         return
+
+    os.makedirs("temp", exist_ok=True)
 
     file_info = bot.get_file(message.document.file_id)
     downloaded_file = bot.download_file(file_info.file_path)
 
-    os.makedirs("temp", exist_ok=True)
     file_path = f"temp/{message.document.file_name}"
     with open(file_path, 'wb') as f:
         f.write(downloaded_file)
 
-    bot.send_message(message.chat.id, "📄 Обрабатываю чек...")
+    bot.send_message(message.chat.id, "Файл получен. Извлекаю текст...")
 
     try:
         text = extract_text_from_pdf(file_path)
-        amount = extract_amount(text)
-
-        if amount is None:
-            bot.send_message(message.chat.id, "❗ Не удалось извлечь сумму из файла.")
+        if not text.strip():
+            bot.send_message(message.chat.id, "❌ Не удалось извлечь текст из PDF.")
             return
 
-        user_id = message.from_user.id
-        conn = connect_db()
-        cur = conn.cursor()
-        cur.execute("SELECT id FROM users WHERE telegram_id = ?", (user_id,))
-        user = cur.fetchone()
-
-        if not user:
-            bot.send_message(message.chat.id, "❌ Вы не зарегистрированы в системе.")
-            return
-
-        db_user_id = user[0]
-
-        # Распознаём тип операции по ключевым словам
-        if "зачисление" in text.lower() or "пополнение" in text.lower():
-            transaction_type = "доход"
-            category = "Платёж по выписке"
-        elif "перевод" in text.lower() or "снятие" in text.lower():
-            transaction_type = "расход"
-            category = "Перевод по выписке"
-        else:
-            transaction_type = "доход"
-            category = "Неопределено"
-
-        cur.execute("""
-            INSERT INTO transactions (user_id, type, amount, category, date)
-            VALUES (?, ?, ?, ?, DATE('now'))
-        """, (db_user_id, transaction_type, amount, category))
-
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        bot.send_message(message.chat.id, f"✅ {transaction_type.capitalize()} {amount}₸ добавлен в категорию \"{category}\"")
+        bot.send_message(message.chat.id, "📊 Текст извлечён. Отправляю на анализ...")
+        result = analyze_with_gpt(text)
+        bot.send_message(message.chat.id, result)
 
     except Exception as e:
-        bot.send_message(message.chat.id, f"⚠️ Ошибка при обработке: {e}")
+        bot.send_message(message.chat.id, f"⚠️ Произошла ошибка: {str(e)}")
     finally:
         if os.path.exists(file_path):
             os.remove(file_path)
+        if os.path.exists("temp") and not os.listdir("temp"):
+            os.rmdir("temp")
 
-# 🔍 Вспомогательные функции
 
-def extract_text_from_pdf(file_path):
-    doc = fitz.open(file_path)
+def extract_text_from_pdf(filepath):
+    doc = fitz.open(filepath)
     text = ""
     for page in doc:
         text += page.get_text()
     return text
-
-
-def extract_amount(text):
-    # Убираем лишние пробелы и символы
-    text = text.replace("₸", "тг").lower()
-
-    # Ищем сумму рядом с ключевыми словами
-    match = re.search(r'(перевод.*совершен.*?)(\d[\d\s]*)\s*тг', text)
-    if match:
-        amount = match.group(2).replace(" ", "")
-        return float(amount)
-
-    # fallback: любое число перед "тг"
-    match = re.search(r'(\d[\d\s]*)\s*тг', text)
-    if match:
-        amount = match.group(1).replace(" ", "")
-        return float(amount)
-
-    return None
 
 def analyze_with_gpt(text):
     response = client.chat.completions.create(
