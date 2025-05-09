@@ -10,9 +10,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import os
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+ADMIN_ID = int(os.environ.get("ADMIN_ID", "0"))
 
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
