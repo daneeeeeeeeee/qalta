@@ -188,8 +188,15 @@ def main_menu(message):
     markup.add(types.KeyboardButton('💰 Добавить доход'))
     markup.add(types.KeyboardButton('📉 Добавить расход'))
     markup.add(types.KeyboardButton('📊 Посмотреть статистику'))
+    markup.add(types.KeyboardButton('📤 Отправить выписку PDF'))  # Новая кнопка
     bot.send_message(message.chat.id, 'Выберите действие:', reply_markup=markup)
 
+user_waiting_pdf = {}
+
+@bot.message_handler(func=lambda message: message.text == '📤 Отправить выписку PDF')
+def request_pdf(message):
+    user_waiting_pdf[message.chat.id] = True
+    bot.send_message(message.chat.id, "📎 Пожалуйста, отправьте PDF-файл выписки.")
 
 
 
@@ -379,27 +386,37 @@ def show_users(message):
 
 
 
+@bot.message_handler(func=lambda message: message.text == '📤 Отправить выписку PDF')
+def request_pdf(message):
+    user_waiting_pdf[message.chat.id] = True
+    bot.send_message(message.chat.id, "📎 Пожалуйста, отправьте PDF-файл выписки для анализа.")
+
 @bot.message_handler(content_types=['document'])
 def handle_pdf(message):
-    if message.document.mime_type != 'application/pdf':
-        bot.reply_to(message, "Пожалуйста, отправьте PDF-файл.")
+    if not user_waiting_pdf.get(message.chat.id):
+        bot.send_message(message.chat.id, "⚠️ Сначала нажмите '📤 Отправить выписку PDF'.")
         return
 
-    os.makedirs("temp", exist_ok=True)
+    user_waiting_pdf[message.chat.id] = False  # Сброс состояния
+
+    if message.document.mime_type != 'application/pdf':
+        bot.send_message(message.chat.id, "❌ Пожалуйста, отправьте PDF-файл.")
+        return
 
     file_info = bot.get_file(message.document.file_id)
     downloaded_file = bot.download_file(file_info.file_path)
 
+    os.makedirs("temp", exist_ok=True)
     file_path = f"temp/{message.document.file_name}"
     with open(file_path, 'wb') as f:
         f.write(downloaded_file)
 
-    bot.send_message(message.chat.id, "Файл получен. Извлекаю текст...")
+    bot.send_message(message.chat.id, "📄 Файл получен. Извлекаю текст...")
 
     try:
         text = extract_text_from_pdf(file_path)
         if not text.strip():
-            bot.send_message(message.chat.id, "❌ Не удалось извлечь текст из PDF.")
+            bot.send_message(message.chat.id, "❗ Не удалось извлечь текст из PDF.")
             return
 
         bot.send_message(message.chat.id, "📊 Текст извлечён. Отправляю на анализ...")
@@ -407,13 +424,10 @@ def handle_pdf(message):
         bot.send_message(message.chat.id, result)
 
     except Exception as e:
-        bot.send_message(message.chat.id, f"⚠️ Произошла ошибка: {str(e)}")
+        bot.send_message(message.chat.id, f"⚠️ Произошла ошибка при анализе: {e}")
     finally:
         if os.path.exists(file_path):
             os.remove(file_path)
-        if os.path.exists("temp") and not os.listdir("temp"):
-            os.rmdir("temp")
-
 
 def extract_text_from_pdf(filepath):
     doc = fitz.open(filepath)
