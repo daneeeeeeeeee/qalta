@@ -453,10 +453,23 @@ def extract_text_from_pdf(file_path):
         text += page.get_text()
     return text
 
+
 def extract_amount(text):
-    matches = re.findall(r'[+-]?\d+[.,]?\d*', text)
-    if matches:
-        return float(matches[0].replace(',', '.'))
+    # Убираем лишние пробелы и символы
+    text = text.replace("₸", "тг").lower()
+
+    # Ищем сумму рядом с ключевыми словами
+    match = re.search(r'(перевод.*совершен.*?)(\d[\d\s]*)\s*тг', text)
+    if match:
+        amount = match.group(2).replace(" ", "")
+        return float(amount)
+
+    # fallback: любое число перед "тг"
+    match = re.search(r'(\d[\d\s]*)\s*тг', text)
+    if match:
+        amount = match.group(1).replace(" ", "")
+        return float(amount)
+
     return None
 
 def analyze_with_gpt(text):
