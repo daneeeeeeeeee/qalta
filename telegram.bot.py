@@ -8,7 +8,12 @@ from openai import OpenAI
 from telebot import types
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from config import TELEGRAM_TOKEN, OPENAI_API_KEY, ADMIN_ID
+import os
+
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
+
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 client = OpenAI(api_key=OPENAI_API_KEY)
