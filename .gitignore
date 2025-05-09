@@ -1,0 +1,5 @@
+__pycache__/
+qaltauser.db
+config.py
+.env
+service_account.json
